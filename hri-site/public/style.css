@@ -120,3 +120,15 @@ footer svg{width:20px;height:20px;animation:spin 18s linear infinite}
   html{scroll-behavior:auto}
   .reveal{opacity:1;transform:none}
 }
+
+/* ---------- v2 additions ---------- */
+.obj-scroll{max-height:190px;overflow-y:auto;padding-right:10px;scrollbar-width:thin;scrollbar-color:#f3c48a transparent;border-radius:8px}
+.obj-scroll>h3:first-child{margin-top:4px}
+.chip{display:inline-block;padding:3px 12px;border-radius:99px;font-weight:700;font-size:.9rem;background:#fff;border:1px solid #f3c48a;color:var(--deep)}
+.num{display:inline-block;min-width:1.2em}
+.invest.team{margin-top:-8px}
+.act-name{font-weight:700}
+.subs{list-style:none;margin:6px 0 2px;padding:0 0 0 14px;border-left:3px solid #f3c48a}
+.subs li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:3px 0;font-size:.9rem}
+.subs .subs-h{font-size:.75rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.who-chip{position:absolute;top:12px;left:clamp(16px,4vw,48px);z-index:3;background:rgba(255,255,255,.88);color:var(--deep);font-weight:800;font-size:.85rem;padding:4px 14px;border-radius:99px;text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.15)}

@@ -52,6 +52,7 @@ const ICON = {
   wind: '<path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/>',
   bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
+  users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
   user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
   calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
   pulse: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
@@ -86,6 +87,11 @@ const badge = s => {
   const cls = s === "Completed" ? "completed" : s === "Not Completed" ? "not" : "proc";
   return `<span class="badge ${cls}">${esc(s)}</span>`;
 };
+const people = (list, empty) => list.length ? list.map(p=>`<span class="chip">${esc(p.name)}</span>`).join("") : `<span class="d">${empty}</span>`;
+const subBadge = s => `<span class="badge ${s === "Completed" ? "completed" : "proc"}">${esc(s)}</span>`;
+const subList = a => (a.subs && a.subs.length)
+  ? `<ul class="subs"><li class="subs-h">Subprocess</li>${a.subs.map(x=>`<li><span>${esc(x.name)}</span>${subBadge(x.status)}</li>`).join("")}</ul>` : "";
+
 function table(headers, rows, emptyText){
   if(!rows.length) return `<p class="empty">${emptyText}</p>`;
   return `<div class="tablewrap"><table><thead><tr>${headers.map(h=>`<th class="${h.cls||""}">${h.t}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
@@ -94,25 +100,22 @@ function table(headers, rows, emptyText){
 function render(d){
   const comps = d.components.map((c,i) => {
     const t = COMP[c.id] || COMP.epi;
-    const inv = c.investigator;
-    const invHtml = (inv.name || inv.designation)
-      ? `<span class="n">${esc(inv.name)}</span>${inv.designation?`<span class="d">${esc(inv.designation)}</span>`:""}`
-      : `<span class="d">Not yet assigned</span>`;
     const done = c.activities.filter(a=>a.status==="Completed").length, total = c.activities.length;
     const pct = total ? Math.round(done/total*100) : 0;
     const prog = total ? `<div class="progress"><span>${done} of ${total} completed</span><div class="track"><div class="fill" data-w="${pct}"></div></div><span>${pct}%</span></div>` : "";
     const acts = table(
       [{t:"Project activities"},{t:"Status"}],
-      c.activities.map(a=>`<tr><td>${esc(a.activity)}</td><td>${badge(a.status)}</td></tr>`),
+      c.activities.map(a=>`<tr><td><div class="act-name">${esc(a.activity)}</div>${subList(a)}</td><td>${badge(a.status)}</td></tr>`),
       "No project activities added yet.");
     const up = table(
       [{t:"Upcoming activities"},{t:"End date",cls:"date"}],
       c.upcoming.map(a=>`<tr><td>${esc(a.activity)}</td><td class="date">${fmtMonth(a.endDate)}</td></tr>`),
       "No upcoming activities added yet.");
     return `<section class="component reveal" style="--c1:${t.c1};--c2:${t.c2};transition-delay:${i*60}ms" aria-label="${esc(c.title)}">
-      <header>${badgeIco(t.icon)}<h3>${esc(c.title)}</h3></header>
+      <header>${badgeIco(t.icon)}<h3><span class="num">${i+1}.</span> ${esc(c.title)}</h3></header>
       <div class="body">
-        <div class="invest">${svg(ICON.user,"")}<span class="k">Investigator in-charge</span>${invHtml}</div>
+        <div class="invest">${svg(ICON.user,"")}<span class="k">Investigators in-charge</span>${people(c.investigators,"Not yet assigned")}</div>
+        <div class="invest team">${svg(ICON.users,"")}<span class="k">Team members</span>${people(c.members,"Not yet added")}</div>
         ${prog}
         <div class="tables">
           <div><p class="tbl-title">${svg(ICON.pulse,"small-ico")}Project activities</p>${acts}</div>
@@ -130,8 +133,10 @@ function render(d){
     <div class="split">
       <section class="panel aim reveal"><h2>${badgeIco("target")}Aim</h2><p>${esc(d.aim)}</p></section>
       <section class="panel obj reveal" style="transition-delay:80ms"><h2>${badgeIco("flag")}Objective</h2>
-        <h3>${svg(ICON.thermo,"small-ico")}a) Primary</h3><p>${esc(d.objectives.primary)}</p>
-        <h3>${svg(ICON.thermo,"small-ico")}b) Secondary</h3><p>${esc(d.objectives.secondary)}</p>
+        <div class="obj-scroll" tabindex="0" role="region" aria-label="Objective details">
+          <h3>${svg(ICON.thermo,"small-ico")}a) Primary</h3><p>${esc(d.objectives.primary)}</p>
+          <h3>${svg(ICON.thermo,"small-ico")}b) Secondary</h3><p>${esc(d.objectives.secondary)}</p>
+        </div>
       </section>
     </div>
     <h2 class="section-title reveal">${badgeIco("thermo")}Components</h2>
@@ -145,6 +150,12 @@ function render(d){
   els.forEach(e => io.observe(e));
 }
 function fillBars(root){ root.querySelectorAll(".fill").forEach(f => f.style.width = f.dataset.w + "%"); }
+
+try{
+  const m = JSON.parse(sessionStorage.getItem("hri_me") || "null");
+  const L = {admin:"Admin",investigator:"Investigator",member:"Team member"};
+  if (m && m.name) { const a = document.createElement("a"); a.className = "who-chip"; a.href = "admin.html"; a.textContent = `${m.name} · ${L[m.role]||""}`; document.querySelector(".hero").appendChild(a); }
+}catch(e){}
 
 fetch("/api/content").then(r => { if(!r.ok) throw 0; return r.json(); })
   .then(render)
