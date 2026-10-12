@@ -52,6 +52,9 @@ const ICON = {
   wind: '<path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/>',
   bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
+  list: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/>',
+  chev: '<polyline points="6 9 12 15 18 9"/>',
+  tick: '<polyline points="5 12 10 17 19 7"/>',
   users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
   user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
   calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
@@ -89,8 +92,12 @@ const badge = s => {
 };
 const people = (list, empty) => list.length ? list.map(p=>`<span class="chip">${esc(p.name)}</span>`).join("") : `<span class="d">${empty}</span>`;
 const subBadge = s => `<span class="badge ${s === "Completed" ? "completed" : "proc"}">${esc(s)}</span>`;
-const subList = a => (a.subs && a.subs.length)
-  ? `<ul class="subs"><li class="subs-h">Subprocess</li>${a.subs.map(x=>`<li><span>${esc(x.name)}</span>${subBadge(x.status)}</li>`).join("")}</ul>` : "";
+const subIco = s => s === "Completed" ? `<span class="sp-ico done">${svg(ICON.tick,"")}</span>` : `<span class="sp-ico going"></span>`;
+const subPanel = (a, id) => `<div class="sp-wrap" id="${id}"><div class="sp-inner">${
+  (a.subs && a.subs.length)
+    ? `<ul class="sp-list">${a.subs.map((x,i)=>`<li style="--i:${i}" class="${x.status==="Completed"?"is-done":"is-going"}">${subIco(x.status)}<span class="sp-name">${esc(x.name)}</span>${subBadge(x.status)}</li>`).join("")}</ul>`
+    : `<p class="empty">No subprocess added yet.</p>`}</div></div>`;
+const subBtn = (a, id) => `<button type="button" class="sub-btn" data-sp="${id}" aria-expanded="false" aria-controls="${id}">${svg(ICON.list,"")}Subprocess<span class="cnt">${(a.subs||[]).length}</span>${svg(ICON.chev,"")}</button>`;
 
 function table(headers, rows, emptyText){
   if(!rows.length) return `<p class="empty">${emptyText}</p>`;
@@ -105,7 +112,7 @@ function render(d){
     const prog = total ? `<div class="progress"><span>${done} of ${total} completed</span><div class="track"><div class="fill" data-w="${pct}"></div></div><span>${pct}%</span></div>` : "";
     const acts = table(
       [{t:"Project activities"},{t:"Status"}],
-      c.activities.map(a=>`<tr><td><div class="act-name">${esc(a.activity)}</div>${subList(a)}</td><td>${badge(a.status)}</td></tr>`),
+      c.activities.map(a=>{ const id = `sp-${c.id}-${a.id}`; return `<tr><td><div class="act-name">${esc(a.activity)}</div>${subPanel(a,id)}</td><td><div class="st-wrap">${badge(a.status)}${subBtn(a,id)}</div></td></tr>`; }),
       "No project activities added yet.");
     const up = table(
       [{t:"Upcoming activities"},{t:"End date",cls:"date"}],
@@ -150,6 +157,14 @@ function render(d){
   els.forEach(e => io.observe(e));
 }
 function fillBars(root){ root.querySelectorAll(".fill").forEach(f => f.style.width = f.dataset.w + "%"); }
+
+document.getElementById("app").addEventListener("click", e => {
+  const b = e.target.closest(".sub-btn"); if (!b) return;
+  const w = document.getElementById(b.dataset.sp); if (!w) return;
+  const open = w.classList.toggle("open");
+  b.classList.toggle("open", open);
+  b.setAttribute("aria-expanded", open);
+});
 
 try{
   const m = JSON.parse(sessionStorage.getItem("hri_me") || "null");

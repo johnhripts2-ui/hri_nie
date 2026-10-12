@@ -132,3 +132,27 @@ footer svg{width:20px;height:20px;animation:spin 18s linear infinite}
 .subs li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:3px 0;font-size:.9rem}
 .subs .subs-h{font-size:.75rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
 .who-chip{position:absolute;top:12px;left:clamp(16px,4vw,48px);z-index:3;background:rgba(255,255,255,.88);color:var(--deep);font-weight:800;font-size:.85rem;padding:4px 14px;border-radius:99px;text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+
+/* ---------- Subprocess button + collapsible list ---------- */
+.st-wrap{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.sub-btn{display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:.8rem;font-weight:800;color:var(--deep2);background:#fff;border:1.5px solid #f3c48a;border-radius:99px;padding:3px 10px;cursor:pointer;transition:background .2s,box-shadow .2s}
+.sub-btn:hover,.sub-btn.open{background:#fff1dc;box-shadow:0 2px 8px rgba(194,65,12,.2)}
+.sub-btn svg{width:15px;height:15px}
+.sub-btn>svg:last-child{transition:transform .3s}
+.sub-btn.open>svg:last-child{transform:rotate(180deg)}
+.sub-btn .cnt{background:linear-gradient(135deg,#f58220,#e03a2f);color:#fff;border-radius:99px;min-width:20px;padding:0 6px;text-align:center;font-size:.72rem;line-height:18px}
+.sp-wrap{display:grid;grid-template-rows:0fr;transition:grid-template-rows .35s ease}
+.sp-wrap.open{grid-template-rows:1fr}
+.sp-inner{overflow:hidden;min-height:0;visibility:hidden;transition:visibility 0s .35s}
+.sp-wrap.open .sp-inner{visibility:visible;transition-delay:0s}
+.sp-list{list-style:none;margin:8px 0 4px;padding:6px 14px;border-radius:12px;background:linear-gradient(90deg,#fff6e8,#fff);border-left:3px solid #f58220}
+.sp-list li{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:.92rem;border-bottom:1px dashed #f3dcc0;opacity:0;transform:translateX(-10px)}
+.sp-list li:last-child{border-bottom:0}
+.sp-wrap.open .sp-list li{opacity:1;transform:none;transition:opacity .4s ease,transform .4s ease;transition-delay:calc(var(--i)*70ms)}
+.sp-name{flex:1}
+.sp-ico{width:22px;height:22px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center}
+.sp-ico svg{width:13px;height:13px;stroke-width:3.4}
+.sp-ico.done{background:linear-gradient(135deg,#13a89e,#12794a);color:#fff;box-shadow:0 2px 6px rgba(18,121,74,.35)}
+.sp-ico.going{background:radial-gradient(circle,#f58220 0 36%,#ffe9bd 38% 100%);animation:ring 2s ease-out infinite}
+@keyframes ring{0%{box-shadow:0 0 0 0 rgba(245,130,32,.55)}100%{box-shadow:0 0 0 9px rgba(245,130,32,0)}}
+@media(prefers-reduced-motion:reduce){.sp-list li{opacity:1;transform:none}}
