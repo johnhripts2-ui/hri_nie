@@ -35,7 +35,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .tabs button[aria-selected=true]{background:var(--deep2);color:#fff}
 .savebar{position:sticky;bottom:0;background:var(--card);border-top:2px solid var(--deep2);padding:12px 18px;margin:24px -4px 0;display:flex;gap:14px;align-items:center;flex-wrap:wrap;z-index:5}
 .row{display:grid;gap:8px;align-items:start;margin-bottom:8px}
-.row.act{grid-template-columns:1fr 170px 44px}
+.row.act{grid-template-columns:34px 1fr 170px 44px;align-items:center}
 .row.up{grid-template-columns:1fr 170px 44px}
 .row.pub{grid-template-columns:1fr 170px 170px 44px}
 .row.sub{grid-template-columns:1fr 170px 44px}
@@ -55,7 +55,20 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .log ul{margin:6px 0 0;padding-left:20px}
 .hint{color:var(--muted);font-size:.88rem;margin:4px 0 0}
 .panel+.panel{margin-top:18px}
-@media(max-width:820px){.two,.row.act,.row.up,.row.pub,.row.sub{grid-template-columns:1fr}.row.head{display:none}.subs-edit{margin-left:6px}}
+.subbox{margin-bottom:10px}
+.assign{margin:-2px 0 6px;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.assign-btn{display:inline-flex;align-items:center;gap:6px;border-color:#1d6fb8;color:#1d6fb8}
+.assign-btn.on{background:#e3f0fb}
+.assign-btn .cnt{background:#1d6fb8;color:#fff;border-radius:99px;min-width:18px;padding:0 6px;font-size:.72rem;line-height:18px;text-align:center}
+.chip.site{background:#e3f0fb;border-color:#b9d8f3;color:#1d6fb8;font-size:.8rem;padding:1px 10px}
+.site-pick{display:flex;flex-wrap:wrap;gap:8px;width:100%;padding:10px 12px;border-radius:12px;background:#f2f8fd;border:1px dashed #b9d8f3}
+.pick{display:inline-flex;align-items:center;gap:6px;margin:0;font-weight:700;background:#fff;border:1.5px solid #b9d8f3;border-radius:99px;padding:5px 14px 5px 10px;cursor:pointer}
+.pick input{width:auto;margin:0}
+.pick:has(input:checked){background:#1d6fb8;border-color:#1d6fb8;color:#fff}
+.note{background:#fff6e8;border:1px solid #f3c48a;border-radius:12px;padding:12px 16px;margin:12px 0}
+.filebox{margin-top:10px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+@media(max-width:820px){.row.act{grid-template-columns:34px 1fr}.row.act>*:nth-child(n+3){grid-column:2}
+.two,.row.act,.row.up,.row.pub,.row.sub{grid-template-columns:1fr}.row.head{display:none}.subs-edit{margin-left:6px}}
 </style>
 </head>
 <body>
@@ -72,6 +85,7 @@ const root = document.getElementById("root");
 let token = sessionStorage.getItem("hri_token");
 let me = null; try { me = JSON.parse(sessionStorage.getItem("hri_me") || "null"); } catch(e) {}
 let data = null, users = [], tab = "edit", editing = null;
+const openAssign = new Set(); // subprocess ids whose site list is open
 
 const rid = () => Math.random().toString(36).slice(2,10);
 function h(tag, props = {}, ...kids){
@@ -139,7 +153,7 @@ function assignedText(){
 
 function render(){
   const tabs = [["edit","Edit content"]];
-  if (isAdmin()) tabs.push(["users","Logins"],["log","Activity log"]);
+  if (isAdmin()) tabs.push(["users","Logins"],["log","Activity log"],["backup","Backup"]);
   const bar = h("div",{class:"bar"},
     h("div",{class:"profile"},
       h("div",{class:"avatar","aria-hidden":"true"}, (me.name||"?").slice(0,1).toUpperCase()),
@@ -154,6 +168,7 @@ function render(){
   root.replaceChildren(bar, tab==="edit" ? editor() : h("div",{id:"tabbox"},"Loading…"));
   if (tab==="users") showUsers();
   if (tab==="log") showLog();
+  if (tab==="backup") drawBackup();
 }
 
 /* ---------- Field helpers ---------- */
@@ -202,6 +217,57 @@ function nameList(list, title, placeholder, addLabel, editable){
   return g;
 }
 
+// Team members created from a login appear automatically; only people without a login are typed here.
+function memberList(c, editable){
+  const g = h("div",{class:"grp"}, h("h4",{},"Team members"));
+  const auto = c.members.filter(m=>m.auto), manual = c.members.filter(m=>!m.auto);
+  if (auto.length) g.append(h("div",{class:"chips"}, auto.map(m=>h("span",{class:"chip"},m.name))),
+    h("p",{class:"hint"},"Added automatically from the team-member logins assigned to this component."));
+  if (!editable) {
+    if (manual.length) g.append(h("div",{class:"chips",style:"margin-top:8px"}, manual.map(m=>h("span",{class:"chip"},m.name))));
+    if (!auto.length && !manual.length) g.append(h("p",{class:"hint"},"None yet."));
+    return g;
+  }
+  g.append(h("p",{class:"hint",style:"margin-top:10px"},"Other team members (without a login):"));
+  manual.forEach(r=>g.append(h("div",{class:"row name"}, textInput(r,"name","Team member name"), delBtn(c.members,r))));
+  g.append(addBtn("+ Add other team member",()=>c.members.push({id:rid(),name:""})));
+  return g;
+}
+
+// "Assign to site": opens a checklist of sites. A subprocess can be assigned to several sites.
+function siteAssign(sp){
+  sp.sites = sp.sites || [];
+  const open = openAssign.has(sp.id);
+  const count = h("span",{class:"cnt"}, String(sp.sites.length));
+  const chips = h("span",{class:"chips"});
+  const draw = () => {
+    count.textContent = sp.sites.length;
+    chips.replaceChildren(...(sp.sites.length ? sp.sites.map(s=>h("span",{class:"chip site"},s)) : [h("span",{class:"hint"},"Not assigned to any site")]));
+  };
+  const btn = h("button",{class:"small assign-btn"+(open?" on":""),type:"button","aria-expanded":open,onclick:()=>{
+    if (open) openAssign.delete(sp.id); else openAssign.add(sp.id);
+    keepScroll(render);
+  }}, "Assign to site", count);
+  const box = h("div",{class:"assign"}, btn, chips);
+  if (open) {
+    box.append(h("div",{class:"site-pick",role:"group","aria-label":"Choose sites"}, data.sites.map(s=>{
+      const cb = h("input",{type:"checkbox"}); cb.checked = sp.sites.includes(s);
+      cb.addEventListener("change",()=>{ sp.sites = data.sites.filter(x => x===s ? cb.checked : sp.sites.includes(x)); draw(); });
+      return h("label",{class:"pick"}, cb, s);
+    })));
+  }
+  draw();
+  return box;
+}
+
+// After a login is created / changed / deleted, refresh the automatic team members without losing unsaved edits.
+async function refreshAuto(){
+  try{
+    const fresh = await (await fetch("/api/content",{cache:"no-store"})).json();
+    data.components.forEach(c=>{ const f = fresh.components.find(x=>x.id===c.id); if (f) c.members = [...c.members.filter(m=>!m.auto), ...f.members.filter(m=>m.auto)]; });
+  }catch(e){}
+}
+
 /* ---------- Editor ---------- */
 function editor(){
   const admin = isAdmin();
@@ -230,21 +296,23 @@ function editor(){
 
     body.append(h("div",{class:"two"},
       nameList(c.investigators,"Investigators in-charge","Investigator name","+ Add investigator",admin),
-      nameList(c.members,"Team members","Team member name","+ Add team member",admin)));
+      memberList(c,admin)));
 
     // Project activities, each with subprocesses
     const g1 = h("div",{class:"grp"}, h("h4",{},"Project activities"),
       h("p",{class:"hint"},"An activity shows “Completed” only when it has subprocesses and all of them are completed; otherwise it shows “On Process”."));
-    c.activities.forEach(a=>{
+    c.activities.forEach((a,ai)=>{
       a.subs = a.subs || [];
       const card = h("div",{class:"actcard"});
-      card.append(h("div",{class:"row act"}, textInput(a,"activity","Project activity"), statusBadge(derive(a)), delBtn(c.activities,a)));
+      card.append(h("div",{class:"row act"}, h("span",{class:"an"},String(ai+1)), textInput(a,"activity","Project activity"), statusBadge(derive(a)), delBtn(c.activities,a)));
       const subs = h("div",{class:"subs-edit"}, h("div",{class:"lbl"},"Subprocess"));
-      a.subs.forEach(sp=>subs.append(h("div",{class:"row sub"},
-        textInput(sp,"name","Subprocess"),
-        selectOf(SUB_STATUSES,sp,"status","Subprocess status",()=>{a.status=derive(a);keepScroll(render);}),
-        delBtn(a.subs,sp))));
-      subs.append(addBtn("+ Subprocess",()=>a.subs.push({id:rid(),name:"",status:"Ongoing"})));
+      a.subs.forEach(sp=>subs.append(h("div",{class:"subbox"},
+        h("div",{class:"row sub"},
+          textInput(sp,"name","Subprocess"),
+          selectOf(SUB_STATUSES,sp,"status","Subprocess status",()=>{a.status=derive(a);keepScroll(render);}),
+          delBtn(a.subs,sp)),
+        siteAssign(sp))));
+      subs.append(addBtn("+ Subprocess",()=>a.subs.push({id:rid(),name:"",status:"Ongoing",sites:[]})));
       card.append(subs);
       g1.append(card);
     });
@@ -290,7 +358,7 @@ async function showUsers(){
 function drawUsers(box){
   const list = h("div",{class:"panel"},
     h("h2",{},"Logins for investigators and team members"),
-    h("p",{class:"hint"},"Create a login for each person and choose the components they may edit. The admin login uses login ID “admin” with the ADMIN_PASSWORD set in Netlify."));
+    h("p",{class:"hint"},"Create a login for each person and choose the components they may edit. A team member is shown automatically under the components you tick, so there is no need to type the name again. The admin login uses login ID “admin” with the ADMIN_PASSWORD set in Netlify."));
   if (!users.length) list.append(h("p",{class:"empty"},"No logins created yet."));
   else {
     const rowsEl = users.map(u=>h("tr",{},
@@ -300,7 +368,7 @@ function drawUsers(box){
       h("td",{}, h("button",{class:"small",type:"button",onclick:()=>{editing={...u,components:[...u.components],password:""};drawUsers(box);}},"Edit"), " ",
         h("button",{class:"danger",type:"button",onclick:async()=>{
           if(!confirm(`Delete the login for ${u.name}?`)) return;
-          try{ users=(await api("/api/admin/users",{method:"POST",body:JSON.stringify({action:"delete",id:u.id})})).users; editing=null; drawUsers(box);}
+          try{ users=(await api("/api/admin/users",{method:"POST",body:JSON.stringify({action:"delete",id:u.id})})).users; editing=null; await refreshAuto(); drawUsers(box);}
           catch(ex){alert(ex.message);} }},"Delete"))));
     list.append(h("div",{class:"tablewrap"},h("table",{},
       h("thead",{},h("tr",{},["Name","Login ID","Role","Components","" ].map(t=>h("th",{},t)))),
@@ -327,7 +395,7 @@ function userForm(box){
     save.disabled=true; err.className="msg"; err.textContent="Saving…";
     try{
       users=(await api("/api/admin/users",{method:"POST",body:JSON.stringify({action:"save",user:u})})).users;
-      editing=null; drawUsers(box);
+      editing=null; await refreshAuto(); drawUsers(box);
     }catch(ex){ err.className="msg err"; err.textContent=ex.message; save.disabled=false; }
   }},isNew?"Create login":"Save login");
   return h("div",{class:"panel"},
@@ -341,6 +409,51 @@ function userForm(box){
     h("div",{class:"grp"},h("h4",{},"Components this person can edit"),checks),
     h("div",{style:"margin-top:14px;display:flex;gap:10px"},save,h("button",{type:"button",onclick:()=>{editing=null;drawUsers(box);}},"Cancel")),
     err);
+}
+
+/* ---------- Backup and restore (admin only) ---------- */
+function drawBackup(){
+  const box = document.getElementById("tabbox");
+  const msg = h("p",{class:"msg",role:"status"});
+  const say = (text, ok) => { msg.className = "msg " + (ok ? "ok" : "err"); msg.textContent = text; };
+  const dl = h("button",{class:"primary",type:"button",onclick:async()=>{
+    dl.disabled = true; say("Preparing backup…", true);
+    try{
+      const b = await api("/api/admin/backup");
+      const blob = new Blob([JSON.stringify(b,null,2)],{type:"application/json"});
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "hri-backup-" + new Date().toISOString().slice(0,10) + ".json";
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+      say("Backup downloaded. Keep the file somewhere safe.", true);
+    }catch(ex){ say(ex.message,false); }
+    dl.disabled = false;
+  }},"Download backup");
+  const file = h("input",{type:"file",accept:".json,application/json","aria-label":"Backup file"});
+  const rs = h("button",{type:"button",onclick:async()=>{
+    const f = file.files[0];
+    if (!f) { say("Choose a backup file first.", false); return; }
+    let backup; try{ backup = JSON.parse(await f.text()); }catch(e){ say("This file could not be read. Choose a backup file downloaded from this page.", false); return; }
+    if (!confirm("Restore this backup? The current content (and logins, if the file has them) will be replaced.")) return;
+    rs.disabled = true; say("Restoring…", true);
+    try{
+      const r = await api("/api/admin/restore",{method:"POST",body:JSON.stringify({backup})});
+      await load(); tab = "backup"; render();
+      const m = document.querySelector("#tabbox .msg"); if (m){ m.className="msg ok"; m.textContent = "Restored: " + r.restored.join(", ") + "."; }
+    }catch(ex){ say(ex.message,false); rs.disabled = false; }
+  }},"Restore from file");
+  box.replaceChildren(h("div",{class:"panel"},
+    h("h2",{},"Backup and restore"),
+    h("div",{class:"note"}, h("strong",{},"Your data is safe when you update the website."),
+      h("p",{class:"hint",style:"margin-top:4px"},"Everything entered here is stored separately from the website files. Uploading new files to GitHub and redeploying on Netlify does not delete it. A backup is an extra copy for safety.")),
+    h("h3",{style:"margin:16px 0 6px"},"Download a backup"),
+    h("p",{class:"hint"},"Saves all content, activities, subprocesses, site assignments, logins and the activity log in one file. The file contains login password codes, so keep it private."),
+    h("div",{class:"filebox"},dl),
+    h("h3",{style:"margin:22px 0 6px"},"Restore from a backup"),
+    h("p",{class:"hint"},"Choose a file downloaded earlier from this page. A file saved from the website\u2019s /api/content address also works (it restores content only, not logins)."),
+    h("div",{class:"filebox"},file,rs),
+    msg));
 }
 
 /* ---------- Activity log (admin only) ---------- */

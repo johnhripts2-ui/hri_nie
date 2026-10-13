@@ -1,6 +1,6 @@
 import { getStore } from "@netlify/blobs";
 import crypto from "node:crypto";
-import { DEFAULTS, COMPONENT_IDS, ROLES, normalize, diff, mergeByRole } from "../lib/shared.mjs";
+import { DEFAULTS, COMPONENT_IDS, ROLES, normalize, diff, mergeByRole, publicView } from "../lib/shared.mjs";
 
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), {
@@ -124,14 +124,60 @@ export default async (req) => {
     const oldData = normalize(await store.get("content", { type: "json" }));
     const newData = mergeByRole(oldData, body.data, me);
     const changes = diff(oldData, newData);
-    if (changes.length === 0) return json({ ok: true, changes: [], data: newData });
+    const users = await getUsers(store);
+    if (changes.length === 0) return json({ ok: true, changes: [], data: publicView(newData, users) });
     await store.setJSON("content", newData);
     await addLog(store, me.name, changes);
-    return json({ ok: true, changes, data: newData });
+    return json({ ok: true, changes, data: publicView(newData, users) });
   }
 
   /* ----- everything below is admin-only ----- */
   if (me.role !== "admin") return json({ error: "Only the admin can do this." }, 403);
+
+  /* ----- backup / restore (admin only) ----- */
+  if (path === "/api/admin/backup" && req.method === "GET") {
+    return json({
+      app: "hri-site",
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      content: normalize(await store.get("content", { type: "json" })),
+      users: await getUsers(store),
+      log: (await store.get("log", { type: "json" })) ?? [],
+    });
+  }
+
+  if (path === "/api/admin/restore" && req.method === "POST") {
+    const { backup: b } = await req.json().catch(() => ({}));
+    // Accept a full backup file, or just the content downloaded from /api/content.
+    const rawContent = b && typeof b === "object" ? (b.app === "hri-site" ? b.content : Array.isArray(b.components) ? b : null) : null;
+    if (!rawContent || !Array.isArray(rawContent.components)) return json({ error: "This file is not a valid HRI backup." }, 400);
+    const content = normalize(rawContent);
+    await store.setJSON("content", content);
+
+    const notes = ["content"];
+    if (b.app === "hri-site" && Array.isArray(b.users)) {
+      const seen = new Set();
+      const clean = [];
+      for (const u of b.users.slice(0, 200)) {
+        const ok = u && ["id", "username", "name", "salt", "hash"].every((k) => typeof u[k] === "string" && u[k]) &&
+          ["investigator", "member"].includes(u.role) && !seen.has(u.username) && u.username !== "admin";
+        if (!ok) continue;
+        seen.add(u.username);
+        clean.push({ id: u.id, username: u.username, name: u.name.slice(0, 80), role: u.role, salt: u.salt, hash: u.hash,
+          components: COMPONENT_IDS.filter((id) => (u.components || []).includes(id)) });
+      }
+      await store.setJSON("users", clean);
+      notes.push(`${clean.length} login(s)`);
+    }
+    if (b.app === "hri-site" && Array.isArray(b.log)) {
+      const log = b.log.filter((e) => e && typeof e.user === "string" && Array.isArray(e.changes)).slice(0, 1000)
+        .map((e) => ({ time: String(e.time || ""), user: e.user.slice(0, 80), changes: e.changes.map((c) => String(c).slice(0, 500)).slice(0, 100) }));
+      await store.setJSON("log", log);
+      notes.push("activity log");
+    }
+    await addLog(store, me.name, [`Data restored from a backup file (${notes.join(", ")})`]);
+    return json({ ok: true, restored: notes });
+  }
 
   if (path === "/api/admin/log" && req.method === "GET") {
     return json((await store.get("log", { type: "json" })) ?? []);

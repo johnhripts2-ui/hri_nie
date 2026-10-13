@@ -52,6 +52,8 @@ const ICON = {
   wind: '<path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/>',
   bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
+  pin: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
+  home: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
   list: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/>',
   chev: '<polyline points="6 9 12 15 18 9"/>',
   tick: '<polyline points="5 12 10 17 19 7"/>',
@@ -91,11 +93,12 @@ const badge = s => {
   return `<span class="badge ${cls}">${esc(s)}</span>`;
 };
 const people = (list, empty) => list.length ? list.map(p=>`<span class="chip">${esc(p.name)}</span>`).join("") : `<span class="d">${empty}</span>`;
+const siteTags = x => (x.sites && x.sites.length) ? `<span class="site-tags">${x.sites.map(s=>`<span class="site-tag">${svg(ICON.pin,"")}${esc(s)}</span>`).join("")}</span>` : "";
 const subBadge = s => `<span class="badge ${s === "Completed" ? "completed" : "proc"}">${esc(s)}</span>`;
 const subIco = s => s === "Completed" ? `<span class="sp-ico done">${svg(ICON.tick,"")}</span>` : `<span class="sp-ico going"></span>`;
 const subPanel = (a, id) => `<div class="sp-wrap" id="${id}"><div class="sp-inner">${
   (a.subs && a.subs.length)
-    ? `<ul class="sp-list">${a.subs.map((x,i)=>`<li style="--i:${i}" class="${x.status==="Completed"?"is-done":"is-going"}">${subIco(x.status)}<span class="sp-name">${esc(x.name)}</span>${subBadge(x.status)}</li>`).join("")}</ul>`
+    ? `<ul class="sp-list">${a.subs.map((x,i)=>`<li style="--i:${i}" class="${x.status==="Completed"?"is-done":"is-going"}">${subIco(x.status)}<span class="sp-name">${esc(x.name)}${siteTags(x)}</span>${subBadge(x.status)}</li>`).join("")}</ul>`
     : `<p class="empty">No subprocess added yet.</p>`}</div></div>`;
 const subBtn = (a, id) => `<button type="button" class="sub-btn" data-sp="${id}" aria-expanded="false" aria-controls="${id}">${svg(ICON.list,"")}Subprocess<span class="cnt">${(a.subs||[]).length}</span>${svg(ICON.chev,"")}</button>`;
 
@@ -104,7 +107,52 @@ function table(headers, rows, emptyText){
   return `<div class="tablewrap"><table><thead><tr>${headers.map(h=>`<th class="${h.cls||""}">${h.t}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
 }
 
+/* ---- Activities - Site view ---- */
+let DATA = null, VIEW = "home", SITE = null;
+const siteWork = (d, site) => d.components.map((c,i)=>({c,i,acts:c.activities.map((a,ai)=>({a,ai,subs:(a.subs||[]).filter(x=>(x.sites||[]).includes(site))})).filter(x=>x.subs.length)})).filter(x=>x.acts.length);
+const siteCount = (d, site) => siteWork(d, site).reduce((n,w)=>n+w.acts.reduce((m,x)=>m+x.subs.length,0),0);
+
+function siteHtml(d, site){
+  const work = siteWork(d, site);
+  const all = work.flatMap(w=>w.acts.flatMap(x=>x.subs));
+  const done = all.filter(x=>x.status==="Completed").length;
+  const pct = all.length ? Math.round(done/all.length*100) : 0;
+  const head = `<div class="site-head"><span class="ico-badge">${svg(ICON.pin,"")}</span><div><h2>${esc(site)}</h2>
+    <p>${all.length ? `${work.length} component${work.length>1?"s":""} · ${all.length} subprocess${all.length>1?"es":""} · ${done} completed` : "Nothing assigned to this site yet"}</p></div>
+    ${all.length ? `<div class="progress site-prog"><div class="track"><div class="fill" style="width:${pct}%"></div></div><span>${pct}%</span></div>` : ""}</div>`;
+  if (!work.length) return head + `<p class="empty site-empty">No subprocess has been assigned to ${esc(site)} yet.</p>`;
+  return head + work.map(({c,i,acts})=>{
+    const t = COMP[c.id] || COMP.epi;
+    return `<section class="component" style="--c1:${t.c1};--c2:${t.c2}">
+      <header>${badgeIco(t.icon)}<h3><span class="num">${i+1}.</span> ${esc(c.title)}</h3></header>
+      <div class="body">${acts.map(({a,ai,subs})=>`
+        <div class="site-act">
+          <div class="site-act-h"><div class="act-name"><span class="an">${ai+1}</span><span>${esc(a.activity)}</span></div>${badge(a.status)}</div>
+          <div class="sp-wrap open"><div class="sp-inner"><ul class="sp-list">${subs.map((x,k)=>`<li style="--i:${k}" class="${x.status==="Completed"?"is-done":"is-going"}">${subIco(x.status)}<span class="sp-name">${esc(x.name)}</span>${subBadge(x.status)}</li>`).join("")}</ul></div></div>
+        </div>`).join("")}</div></section>`;
+  }).join("");
+}
+
+function showView(view, site, push){
+  VIEW = view;
+  if (site) SITE = site;
+  const home = document.getElementById("view-home"), sites = document.getElementById("view-sites");
+  if (!home || !sites) return;
+  home.hidden = view !== "home"; sites.hidden = view !== "sites";
+  document.querySelectorAll(".seg button").forEach(b=>{ const on = b.dataset.view === view; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
+  if (view === "sites") {
+    const d = DATA;
+    if (!SITE || !d.sites.includes(SITE)) SITE = d.sites[0];
+    document.querySelectorAll(".site-btn").forEach(b=>{ const on = b.dataset.site === SITE; b.classList.toggle("on", on); b.setAttribute("aria-pressed", on); });
+    const out = document.getElementById("site-out");
+    out.innerHTML = siteHtml(d, SITE);
+    out.classList.remove("swap"); void out.offsetWidth; out.classList.add("swap");
+  }
+  if (push) { try { history.replaceState(null, "", view === "sites" ? "#sites/" + encodeURIComponent(SITE) : "#home"); } catch(e){} }
+}
+
 function render(d){
+  DATA = d;
   const comps = d.components.map((c,i) => {
     const t = COMP[c.id] || COMP.epi;
     const done = c.activities.filter(a=>a.status==="Completed").length, total = c.activities.length;
@@ -112,7 +160,7 @@ function render(d){
     const prog = total ? `<div class="progress"><span>${done} of ${total} completed</span><div class="track"><div class="fill" data-w="${pct}"></div></div><span>${pct}%</span></div>` : "";
     const acts = table(
       [{t:"Project activities"},{t:"Status"}],
-      c.activities.map(a=>{ const id = `sp-${c.id}-${a.id}`; return `<tr><td><div class="act-name">${esc(a.activity)}</div>${subPanel(a,id)}</td><td><div class="st-wrap">${badge(a.status)}${subBtn(a,id)}</div></td></tr>`; }),
+      c.activities.map((a,ai)=>{ const id = `sp-${c.id}-${a.id}`; return `<tr><td><div class="act-name"><span class="an">${ai+1}</span><span>${esc(a.activity)}</span></div>${subPanel(a,id)}</td><td><div class="st-wrap">${badge(a.status)}${subBtn(a,id)}</div></td></tr>`; }),
       "No project activities added yet.");
     const up = table(
       [{t:"Upcoming activities"},{t:"End date",cls:"date"}],
@@ -126,7 +174,8 @@ function render(d){
         ${prog}
         <div class="tables">
           <div><p class="tbl-title">${svg(ICON.pulse,"small-ico")}Project activities</p>${acts}</div>
-          <div><p class="tbl-title">${svg(ICON.clock,"small-ico")}Upcoming activities</p>${up}</div>
+          <div class="vdiv" aria-hidden="true"></div>
+          <div class="up-col"><p class="tbl-title">${svg(ICON.clock,"small-ico")}Upcoming activities</p>${up}</div>
         </div>
       </div></section>`;
   }).join("");
@@ -136,7 +185,14 @@ function render(d){
     d.publications.map(a=>`<tr><td>${esc(a.activity)}</td><td>${badge(a.status)}</td><td class="date">${fmtMonth(a.endDate)}</td></tr>`),
     "No activities added yet.");
 
+  const siteBtns = d.sites.map(s=>{ const n = siteCount(d, s); return `<button type="button" class="site-btn" data-site="${esc(s)}" aria-pressed="false">${svg(ICON.pin,"")}${esc(s)}<span class="cnt${n?"":" zero"}">${n}</span></button>`; }).join("");
+
   document.getElementById("app").innerHTML = `
+    <div class="viewbar"><div class="seg" role="tablist" aria-label="Choose view">
+      <button type="button" role="tab" class="on" data-view="home" aria-selected="true">${svg(ICON.home,"")}Home</button>
+      <button type="button" role="tab" data-view="sites" aria-selected="false">${svg(ICON.pin,"")}Activities - Site</button>
+    </div></div>
+    <div id="view-home">
     <div class="split">
       <section class="panel aim reveal"><h2>${badgeIco("target")}Aim</h2><p>${esc(d.aim)}</p></section>
       <section class="panel obj reveal" style="transition-delay:80ms"><h2>${badgeIco("flag")}Objective</h2>
@@ -149,21 +205,41 @@ function render(d){
     <h2 class="section-title reveal">${badgeIco("thermo")}Components</h2>
     ${comps}
     <h2 class="section-title reveal">${badgeIco("file")}Other activities for publication</h2>
-    <div class="panel reveal">${pubs}</div>`;
+    <div class="panel reveal">${pubs}</div>
+    </div>
+    <div id="view-sites" hidden>
+      <h2 class="section-title">${badgeIco("pin")}Site-wise activities</h2>
+      <div class="site-btns" role="group" aria-label="Choose a site">${siteBtns}</div>
+      <div id="site-out"></div>
+    </div>`;
 
   const els = document.querySelectorAll(".reveal");
-  if (!("IntersectionObserver" in window)) { els.forEach(e=>{e.classList.add("in");fillBars(e);}); return; }
-  const io = new IntersectionObserver(es => es.forEach(e => { if(e.isIntersecting){ e.target.classList.add("in"); fillBars(e.target); io.unobserve(e.target);} }), {threshold:.12});
-  els.forEach(e => io.observe(e));
+  if (!("IntersectionObserver" in window)) els.forEach(e=>{e.classList.add("in");fillBars(e);});
+  else {
+    const io = new IntersectionObserver(es => es.forEach(e => { if(e.isIntersecting){ e.target.classList.add("in"); fillBars(e.target); io.unobserve(e.target);} }), {threshold:.12});
+    els.forEach(e => io.observe(e));
+  }
+  const m = location.hash.match(/^#sites(?:\/(.+))?$/);
+  if (m) showView("sites", m[1] ? decodeURIComponent(m[1]) : null, false); else showView(VIEW, null, false);
 }
 function fillBars(root){ root.querySelectorAll(".fill").forEach(f => f.style.width = f.dataset.w + "%"); }
 
 document.getElementById("app").addEventListener("click", e => {
+  const sg = e.target.closest(".seg button");
+  if (sg) { showView(sg.dataset.view, null, true); return; }
+  const sb = e.target.closest(".site-btn");
+  if (sb) { showView("sites", sb.dataset.site, true); return; }
   const b = e.target.closest(".sub-btn"); if (!b) return;
   const w = document.getElementById(b.dataset.sp); if (!w) return;
   const open = w.classList.toggle("open");
   b.classList.toggle("open", open);
   b.setAttribute("aria-expanded", open);
+});
+
+window.addEventListener("hashchange", () => {
+  if (!DATA) return;
+  const m = location.hash.match(/^#sites(?:\/(.+))?$/);
+  if (m) showView("sites", m[1] ? decodeURIComponent(m[1]) : null, false); else showView("home", null, false);
 });
 
 try{

@@ -2,6 +2,7 @@
 
 export const STATUSES = ["Completed", "On Process", "Not Completed"]; // used by "Other activities for publication"
 export const SUB_STATUSES = ["Ongoing", "Completed"];
+export const SITES = ["Bikaner", "Patna", "Goa", "Agra", "Shimla", "Vizag"];
 export const ROLES = { admin: "Admin", investigator: "Investigator", member: "Team member" };
 
 const P = (id, name) => ({ id, name });
@@ -33,7 +34,7 @@ const subStatus = (v) => (SUB_STATUSES.includes(v) ? v : "Ongoing");
 const rid = () => Math.random().toString(36).slice(2, 10);
 const rows = (arr, map) => (Array.isArray(arr) ? arr.slice(0, 200).map(map) : []);
 const people = (arr) =>
-  rows(arr, (r) => ({ id: s(r?.id, 40) || rid(), name: s(r?.name, 200) })).filter((r) => r.name);
+  rows((Array.isArray(arr) ? arr : []).filter((r) => !r?.auto), (r) => ({ id: s(r?.id, 40) || rid(), name: s(r?.name, 200) })).filter((r) => r.name);
 
 // A project activity is "Completed" only when it has subprocesses and all of them are completed.
 export const deriveStatus = (subs) =>
@@ -59,6 +60,7 @@ export function sanitize(input = {}) {
             id: s(x?.id, 40) || rid(),
             name: s(x?.name, 500),
             status: subStatus(x?.status),
+            sites: SITES.filter((v) => Array.isArray(x?.sites) && x.sites.includes(v)),
           })).filter((x) => x.name);
           return { id: s(r?.id, 40) || rid(), activity: s(r?.activity, 500), subs, status: deriveStatus(subs) };
         }).filter((r) => r.activity),
@@ -113,7 +115,7 @@ function diffRows(label, oldRows, newRows, fields, out) {
   for (const r of newRows) {
     const o = oldMap.get(r.id);
     if (!o) {
-      const extra = fields.slice(1).map(([k, n]) => `${n}: ${show(r[k])}`).join(", ");
+      const extra = fields.slice(1).filter(([k]) => r[k] !== "" && r[k] != null).map(([k, n]) => `${n}: ${show(r[k])}`).join(", ");
       out.push(`${label}: added "${r[mainKey]}"${extra ? " (" + extra + ")" : ""}`);
       continue;
     }
@@ -143,11 +145,39 @@ export function diff(oldData, newData) {
     diffRows(`${L} – Project activity`, oc.activities, nc.activities, [["activity", "activity"], ["status", "status"]], out);
     for (const a of nc.activities) {
       const oa = oc.activities.find((x) => x.id === a.id) || { subs: [] };
-      diffRows(`${L} – Subprocess of "${a.activity}"`, oa.subs, a.subs, [["name", "subprocess"], ["status", "status"]], out);
+      const withSites = (list) => list.map((x) => ({ ...x, sitesText: (x.sites || []).join(", ") }));
+      diffRows(`${L} – Subprocess of "${a.activity}"`, withSites(oa.subs), withSites(a.subs),
+        [["name", "subprocess"], ["status", "status"], ["sitesText", "assigned sites"]], out);
     }
     diffRows(`${L} – Upcoming activity`, oc.upcoming, nc.upcoming, [["activity", "activity"], ["endDate", "end date"]], out);
   });
   diffRows("Other activities for publication", oldData.publications, newData.publications,
     [["activity", "activity"], ["status", "status"], ["endDate", "end date"]], out);
   return out;
+}
+
+// Name matching used to avoid listing the same person twice ("Dr. Vijay" = "vijay").
+const norm = (n) =>
+  String(n ?? "").toLowerCase().replace(/\b(dr|sir|mr|mrs|ms)\b\.?/g, "").replace(/[^a-z0-9]/g, "");
+
+// What the website and admin page receive: the stored content, plus the site list, plus every
+// login with the "Team member" role added automatically to the components assigned to it.
+// (Those automatic members are marked auto:true and are never saved into the content.)
+export function publicView(data, users = []) {
+  return {
+    ...data,
+    sites: SITES,
+    components: data.components.map((c) => {
+      const seen = new Set(c.members.map((m) => norm(m.name)));
+      const auto = [];
+      for (const u of users) {
+        if (u.role !== "member" || !(u.components || []).includes(c.id)) continue;
+        const k = norm(u.name);
+        if (!k || seen.has(k)) continue;
+        seen.add(k);
+        auto.push({ id: "u-" + u.id, name: u.name, auto: true });
+      }
+      return { ...c, members: [...c.members, ...auto] };
+    }),
+  };
 }
